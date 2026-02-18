@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Multimodal RAG — Text + Images</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--card:#222531;--border:#2d3040;
+  --text:#e4e6f0;--muted:#8b8fa3;--accent:#7c6aef;--accent2:#5b4dc7;
+  --green:#34d399;--red:#f87171;--orange:#fb923c;
+  --radius:12px;--shadow:0 4px 24px rgba(0,0,0,.4);
+}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+
+/* Header */
+.header{background:var(--surface);border-bottom:1px solid var(--border);padding:1rem 2rem;display:flex;align-items:center;gap:1rem;position:sticky;top:0;z-index:100}
+.header h1{font-size:1.3rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.header .badge{font-size:.7rem;padding:2px 8px;border-radius:99px;background:var(--accent);color:#fff;font-weight:600}
+
+/* Nav */
+.nav{display:flex;gap:.5rem;margin-left:auto}
+.nav button{background:transparent;border:1px solid var(--border);color:var(--muted);padding:.45rem 1rem;border-radius:99px;cursor:pointer;font-size:.8rem;transition:.2s}
+.nav button:hover,.nav button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
+
+/* Layout */
+.container{max-width:1300px;margin:0 auto;padding:1.5rem}
+.section{display:none}
+.section.active{display:block}
+
+/* Cards grid */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem;margin-top:1rem}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;transition:.2s;position:relative}
+.card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--shadow)}
+.card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block}
+.card .body{padding:1rem}
+.card .type-badge{position:absolute;top:.5rem;left:.5rem;font-size:.65rem;padding:2px 8px;border-radius:99px;font-weight:600;text-transform:uppercase}
+.card .type-badge.text-type{background:var(--accent);color:#fff}
+.card .type-badge.image-type{background:var(--green);color:#111}
+.card .title{font-weight:600;font-size:.95rem;margin-bottom:.4rem}
+.card .desc{color:var(--muted);font-size:.82rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card .meta{display:flex;justify-content:space-between;align-items:center;margin-top:.6rem;font-size:.72rem;color:var(--muted)}
+.card .delete-btn{background:none;border:none;color:var(--red);cursor:pointer;font-size:.8rem;opacity:.5;transition:.2s}
+.card .delete-btn:hover{opacity:1}
+.card .similarity{color:var(--green);font-weight:600;font-size:.78rem}
+
+/* Filter bar */
+.filter-bar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.filter-bar select,.filter-bar input{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:.5rem .8rem;border-radius:8px;font-size:.85rem}
+.count{color:var(--muted);font-size:.82rem;margin-left:auto}
+
+/* Upload section */
+.upload-area{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:2rem;max-width:700px}
+.tabs{display:flex;gap:0;margin-bottom:1.5rem;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.tabs button{flex:1;padding:.6rem 1rem;background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:.85rem;transition:.2s}
+.tabs button.active{background:var(--accent);color:#fff}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.form-group{margin-bottom:1rem}
+.form-group label{display:block;font-size:.82rem;color:var(--muted);margin-bottom:.35rem;font-weight:500}
+.form-group input,.form-group textarea{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.6rem .8rem;border-radius:8px;font-size:.85rem;font-family:inherit;resize:vertical}
+.form-group textarea{min-height:100px}
+
+/* Drop zone */
+.dropzone{border:2px dashed var(--border);border-radius:var(--radius);padding:2rem;text-align:center;cursor:pointer;transition:.2s;position:relative}
+.dropzone:hover,.dropzone.dragover{border-color:var(--accent);background:rgba(124,106,239,.05)}
+.dropzone .icon{font-size:2.5rem;margin-bottom:.5rem}
+.dropzone p{color:var(--muted);font-size:.85rem}
+.dropzone input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.preview-img{max-width:200px;max-height:150px;border-radius:8px;margin-top:.5rem;display:none}
+
+/* Buttons */
+.btn{padding:.55rem 1.4rem;border:none;border-radius:8px;cursor:pointer;font-size:.85rem;font-weight:600;transition:.2s}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent2)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+
+/* Query section */
+.query-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;max-width:800px}
+.query-input{display:flex;gap:.5rem}
+.query-input input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.65rem 1rem;border-radius:8px;font-size:.9rem}
+.answer-box{background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;margin-top:1rem;line-height:1.6;font-size:.9rem;display:none;white-space:pre-wrap}
+.answer-box h3{font-size:.85rem;color:var(--accent);margin-bottom:.5rem;font-weight:600}
+
+/* Gallery */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:.8rem;margin-top:1rem}
+.gallery .gal-card{border-radius:var(--radius);overflow:hidden;cursor:pointer;position:relative;aspect-ratio:1;transition:.2s}
+.gallery .gal-card:hover{transform:scale(1.02);box-shadow:var(--shadow)}
+.gallery .gal-card img{width:100%;height:100%;object-fit:cover}
+.gallery .gal-card .overlay{position:absolute;bottom:0;left:0;right:0;padding:.6rem;background:linear-gradient(transparent,rgba(0,0,0,.8));color:#fff;font-size:.8rem;font-weight:500}
+
+/* Lightbox */
+.lightbox{position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:999;display:none;align-items:center;justify-content:center;flex-direction:column}
+.lightbox.open{display:flex}
+.lightbox img{max-width:90vw;max-height:80vh;border-radius:8px}
+.lightbox .info{color:#fff;margin-top:1rem;text-align:center;max-width:600px}
+.lightbox .info h3{font-size:1.1rem;margin-bottom:.3rem}
+.lightbox .info p{color:var(--muted);font-size:.85rem}
+.lightbox .close-lb{position:absolute;top:1rem;right:1.5rem;font-size:2rem;color:#fff;cursor:pointer;background:none;border:none}
+
+/* Toast */
+.toast{position:fixed;bottom:1.5rem;right:1.5rem;background:var(--green);color:#111;padding:.7rem 1.2rem;border-radius:8px;font-size:.85rem;font-weight:600;opacity:0;transition:.3s;z-index:200;pointer-events:none}
+.toast.show{opacity:1}
+.toast.error{background:var(--red);color:#fff}
+
+/* Spinner */
+.spinner{display:inline-block;width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-left:.5rem}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Stats banner */
+.stats{display:flex;gap:1.5rem;margin-bottom:1.2rem;flex-wrap:wrap}
+.stat{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:.8rem 1.2rem;min-width:130px}
+.stat .num{font-size:1.6rem;font-weight:700;background:linear-gradient(135deg,var(--accent),var(--green));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.stat .label{font-size:.75rem;color:var(--muted);margin-top:.15rem}
+
+@media(max-width:600px){
+  .header{padding:.8rem 1rem;flex-wrap:wrap}
+  .nav{margin-left:0;width:100%}
+  .container{padding:1rem}
+  .grid{grid-template-columns:1fr}
+  .gallery{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🖼️ Multimodal RAG</h1>
+  <span class="badge">Text + Images</span>
+  <nav class="nav">
+    <button class="active" onclick="showSection('browse')">Browse</button>
+    <button onclick="showSection('upload')">Upload</button>
+    <button onclick="showSection('query')">Query</button>
+    <button onclick="showSection('gallery')">Gallery</button>
+  </nav>
+</div>
+
+<div class="container">
+
+  <!-- BROWSE -->
+  <div id="sec-browse" class="section active">
+    <div class="stats" id="stats"></div>
+    <div class="filter-bar">
+      <select id="type-filter" onchange="loadItems()">
+        <option value="">All Types</option>
+        <option value="text">Text Only</option>
+        <option value="image">Images Only</option>
+      </select>
+      <span class="count" id="item-count"></span>
+    </div>
+    <div class="grid" id="items-grid"></div>
+  </div>
+
+  <!-- UPLOAD -->
+  <div id="sec-upload" class="section">
+    <div class="upload-area">
+      <div class="tabs">
+        <button class="active" onclick="switchTab('text')">📝 Text</button>
+        <button onclick="switchTab('image')">🖼️ Image</button>
+      </div>
+
+      <!-- Text tab -->
+      <div id="tab-text" class="tab-content active">
+        <div class="form-group">
+          <label>Title</label>
+          <input id="txt-title" placeholder="Enter title...">
+        </div>
+        <div class="form-group">
+          <label>Content</label>
+          <textarea id="txt-content" placeholder="Enter text content..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="submitText()" id="btn-text">Add Text Item</button>
+      </div>
+
+      <!-- Image tab -->
+      <div id="tab-image" class="tab-content">
+        <div class="dropzone" id="dropzone">
+          <div class="icon">📁</div>
+          <p>Drag & drop an image or click to browse</p>
+          <input type="file" accept="image/*" id="img-file" onchange="previewFile(this)">
+        </div>
+        <img class="preview-img" id="img-preview">
+        <div class="form-group" style="margin-top:1rem">
+          <label>Title</label>
+          <input id="img-title" placeholder="Image title...">
+        </div>
+        <div class="form-group">
+          <label>Description (used for semantic search)</label>
+          <textarea id="img-desc" placeholder="Describe what the image shows — this text is used to generate the embedding for search..."></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="submitImage()" id="btn-img">Upload Image</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- QUERY -->
+  <div id="sec-query" class="section">
+    <div class="query-box">
+      <h2 style="font-size:1.1rem;margin-bottom:1rem">🔍 Multimodal Search</h2>
+      <div class="query-input">
+        <input id="q-input" placeholder="Ask a question across text and images..." onkeydown="if(event.key==='Enter')doQuery()">
+        <select id="q-type" style="background:var(--bg);border:1px solid var(--border);color:var(--text);padding:.5rem;border-radius:8px;font-size:.8rem">
+          <option value="">All</option>
+          <option value="text">Text</option>
+          <option value="image">Image</option>
+        </select>
+        <button class="btn btn-primary" onclick="doQuery()" id="btn-query">Search</button>
+      </div>
+      <div class="answer-box" id="answer-box">
+        <h3>💡 Answer</h3>
+        <div id="answer-text"></div>
+      </div>
+    </div>
+    <div class="grid" id="results-grid" style="margin-top:1.2rem"></div>
+  </div>
+
+  <!-- GALLERY -->
+  <div id="sec-gallery" class="section">
+    <h2 style="font-size:1.1rem;margin-bottom:.5rem">🖼️ Image Gallery</h2>
+    <div class="gallery" id="gallery-grid"></div>
+  </div>
+
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox">
+  <button class="close-lb" onclick="closeLB()">&times;</button>
+  <img id="lb-img" src="">
+  <div class="info">
+    <h3 id="lb-title"></h3>
+    <p id="lb-desc"></p>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '';
+
+// ---- Navigation ----
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('sec-' + name).classList.add('active');
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  if (name === 'browse') loadItems();
+  if (name === 'gallery') loadGallery();
+}
+
+// ---- Toast ----
+function toast(msg, err = false) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show' + (err ? ' error' : '');
+  setTimeout(() => t.className = 'toast', 2500);
+}
+
+// ---- Tabs ----
+function switchTab(tab) {
+  document.querySelectorAll('.tabs button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+// ---- Load items ----
+async function loadItems() {
+  const type = document.getElementById('type-filter').value;
+  const url = type ? `${API}/items?type=${type}` : `${API}/items`;
+  const items = await (await fetch(url)).json();
+  const grid = document.getElementById('items-grid');
+  grid.innerHTML = items.map(it => cardHTML(it)).join('');
+  document.getElementById('item-count').textContent = `${items.length} items`;
+
+  // Stats
+  const all = await (await fetch(`${API}/items`)).json();
+  const textCount = all.filter(i => i.item_type === 'text').length;
+  const imgCount = all.filter(i => i.item_type === 'image').length;
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="num">${all.length}</div><div class="label">Total Items</div></div>
+    <div class="stat"><div class="num">${textCount}</div><div class="label">Text Items</div></div>
+    <div class="stat"><div class="num">${imgCount}</div><div class="label">Images</div></div>
+  `;
+}
+
+function cardHTML(it, showSim = false) {
+  const isImg = it.item_type === 'image';
+  const badgeCls = isImg ? 'image-type' : 'text-type';
+  const imgTag = isImg ? `<img src="${API}/items/${it.id}/image?thumb=1" alt="${it.title}" loading="lazy">` : '';
+  const bodyText = isImg ? (it.description || '') : (it.content || '');
+  const simBadge = showSim && it.similarity != null ? `<span class="similarity">${(it.similarity * 100).toFixed(1)}%</span>` : '';
+  const date = new Date(it.created_at).toLocaleDateString();
+  return `
+    <div class="card">
+      <span class="type-badge ${badgeCls}">${it.item_type}</span>
+      ${imgTag}
+      <div class="body">
+        <div class="title">${esc(it.title)}</div>
+        <div class="desc">${esc(bodyText)}</div>
+        <div class="meta">
+          <span>${date}</span>
+          ${simBadge}
+          <button class="delete-btn" onclick="deleteItem(${it.id})" title="Delete">🗑️</button>
+        </div>
+      </div>
+    </div>`;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+
+// ---- Delete ----
+async function deleteItem(id) {
+  if (!confirm('Delete this item?')) return;
+  await fetch(`${API}/items/${id}`, { method: 'DELETE' });
+  toast('Item deleted');
+  loadItems();
+  loadGallery();
+}
+
+// ---- Submit text ----
+async function submitText() {
+  const title = document.getElementById('txt-title').value.trim();
+  const content = document.getElementById('txt-content').value.trim();
+  if (!title || !content) return toast('Title and content required', true);
+  const btn = document.getElementById('btn-text');
+  btn.disabled = true; btn.innerHTML = 'Adding...<span class="spinner"></span>';
+  try {
+    const r = await fetch(`${API}/items/text`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content })
+    });
+    if (!r.ok) throw new Error((await r.json()).error);
+    toast('Text item added!');
+    document.getElementById('txt-title').value = '';
+    document.getElementById('txt-content').value = '';
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false; btn.textContent = 'Add Text Item';
+}
+
+// ---- Submit image ----
+async function submitImage() {
+  const file = document.getElementById('img-file').files[0];
+  const title = document.getElementById('img-title').value.trim();
+  const desc = document.getElementById('img-desc').value.trim();
+  if (!file || !title || !desc) return toast('Image, title and description required', true);
+  const btn = document.getElementById('btn-img');
+  btn.disabled = true; btn.innerHTML = 'Uploading...<span class="spinner"></span>';
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('title', title);
+  fd.append('description', desc);
+  try {
+    const r = await fetch(`${API}/items/image`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error((await r.json()).error);
+    toast('Image uploaded!');
+    document.getElementById('img-file').value = '';
+    document.getElementById('img-title').value = '';
+    document.getElementById('img-desc').value = '';
+    document.getElementById('img-preview').style.display = 'none';
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false; btn.textContent = 'Upload Image';
+}
+
+// ---- Preview file ----
+function previewFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const prev = document.getElementById('img-preview');
+  prev.src = URL.createObjectURL(file);
+  prev.style.display = 'block';
+}
+
+// ---- Drag & drop ----
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('dragover');
+  const files = e.dataTransfer.files;
+  if (files.length) {
+    document.getElementById('img-file').files = files;
+    previewFile(document.getElementById('img-file'));
+  }
+});
+
+// ---- Query ----
+async function doQuery() {
+  const question = document.getElementById('q-input').value.trim();
+  if (!question) return;
+  const type = document.getElementById('q-type').value;
+  const btn = document.getElementById('btn-query');
+  btn.disabled = true; btn.innerHTML = 'Searching...<span class="spinner"></span>';
+  document.getElementById('answer-box').style.display = 'none';
+  document.getElementById('results-grid').innerHTML = '';
+  try {
+    const body = { question };
+    if (type) body.type = type;
+    const r = await fetch(`${API}/query`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await r.json();
+    document.getElementById('answer-text').textContent = data.answer;
+    document.getElementById('answer-box').style.display = 'block';
+    document.getElementById('results-grid').innerHTML = data.results.map(it => cardHTML(it, true)).join('');
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false; btn.textContent = 'Search';
+}
+
+// ---- Gallery ----
+async function loadGallery() {
+  const items = await (await fetch(`${API}/items?type=image`)).json();
+  const grid = document.getElementById('gallery-grid');
+  grid.innerHTML = items.map(it => `
+    <div class="gal-card" onclick="openLB(${it.id}, '${esc(it.title)}', '${esc(it.description || '')}')">
+      <img src="${API}/items/${it.id}/image?thumb=1" alt="${esc(it.title)}" loading="lazy">
+      <div class="overlay">${esc(it.title)}</div>
+    </div>
+  `).join('');
+  if (!items.length) grid.innerHTML = '<p style="color:var(--muted)">No images yet. Upload some!</p>';
+}
+
+// ---- Lightbox ----
+function openLB(id, title, desc) {
+  document.getElementById('lb-img').src = `${API}/items/${id}/image`;
+  document.getElementById('lb-title').textContent = title;
+  document.getElementById('lb-desc').textContent = desc;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLB() { document.getElementById('lightbox').classList.remove('open'); }
+document.getElementById('lightbox').addEventListener('click', e => { if (e.target.id === 'lightbox') closeLB(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLB(); });
+
+// Init
+loadItems();
+</script>
+</body>
+</html>

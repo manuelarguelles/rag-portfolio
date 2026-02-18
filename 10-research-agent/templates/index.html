@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Research Agent</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #232733;
+    --border: #2d3148;
+    --text: #e4e6f0;
+    --muted: #8b8fa8;
+    --accent: #6c63ff;
+    --accent2: #8b83ff;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --orange: #fb923c;
+    --cyan: #22d3ee;
+    --pink: #f472b6;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg); color: var(--text);
+    display: flex; height: 100vh; overflow: hidden;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: 300px; min-width: 300px;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex; flex-direction: column;
+  }
+  .sidebar-header {
+    padding: 20px; border-bottom: 1px solid var(--border);
+  }
+  .sidebar-header h1 {
+    font-size: 18px; font-weight: 700;
+    background: linear-gradient(135deg, var(--accent), var(--cyan));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .sidebar-header p { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  .new-project { padding: 16px; border-bottom: 1px solid var(--border); }
+  .new-project input {
+    width: 100%; padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 14px;
+    outline: none; margin-bottom: 10px;
+  }
+  .new-project input:focus { border-color: var(--accent); }
+  .new-project button {
+    width: 100%; padding: 10px;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    border: none; border-radius: 8px;
+    color: #fff; font-weight: 600; font-size: 14px; cursor: pointer;
+    transition: opacity .2s;
+  }
+  .new-project button:hover { opacity: .85; }
+  .new-project button:disabled { opacity: .5; cursor: not-allowed; }
+
+  .project-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .project-item {
+    padding: 12px 14px; border-radius: 8px; cursor: pointer;
+    margin-bottom: 4px; transition: background .15s;
+  }
+  .project-item:hover { background: var(--surface2); }
+  .project-item.active { background: var(--surface2); border-left: 3px solid var(--accent); }
+  .project-item .title { font-size: 14px; font-weight: 500; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  .project-item .meta { font-size: 11px; color: var(--muted); margin-top: 4px;
+    display: flex; gap: 10px; align-items: center; }
+
+  .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .status-dot.pending { background: var(--muted); }
+  .status-dot.researching { background: var(--yellow); animation: pulse 1.5s infinite; }
+  .status-dot.analyzing { background: var(--orange); animation: pulse 1.5s infinite; }
+  .status-dot.completed { background: var(--green); }
+  .status-dot.failed { background: var(--red); }
+
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+
+  /* ── Main ── */
+  .main {
+    flex: 1; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .main-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; color: var(--muted);
+  }
+  .main-empty .icon { font-size: 64px; margin-bottom: 16px; }
+  .main-empty p { font-size: 16px; }
+
+  /* ── Dashboard ── */
+  .dashboard { flex: 1; overflow-y: auto; padding: 24px; display: none; }
+  .dashboard.show { display: block; }
+
+  .dash-header {
+    display: flex; align-items: center; gap: 16px; margin-bottom: 24px;
+  }
+  .dash-header h2 { font-size: 22px; font-weight: 700; flex: 1; }
+
+  /* Progress */
+  .progress-bar {
+    background: var(--surface2); border-radius: 12px;
+    height: 8px; overflow: hidden; margin-bottom: 24px;
+  }
+  .progress-fill {
+    height: 100%; border-radius: 12px;
+    background: linear-gradient(90deg, var(--accent), var(--cyan));
+    transition: width .6s ease;
+  }
+  .progress-steps {
+    display: flex; justify-content: space-between; margin-bottom: 24px;
+  }
+  .step {
+    font-size: 12px; color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .step.active { color: var(--accent); font-weight: 600; }
+  .step.done { color: var(--green); }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 4px; margin-bottom: 20px;
+    border-bottom: 1px solid var(--border); padding-bottom: 0;
+  }
+  .tab {
+    padding: 10px 18px; font-size: 13px; font-weight: 500;
+    color: var(--muted); cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all .2s;
+  }
+  .tab:hover { color: var(--text); }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .tab-content { display: none; }
+  .tab-content.show { display: block; }
+
+  /* Report */
+  .report-content {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 24px; line-height: 1.7;
+    font-size: 14px;
+  }
+  .report-content h1, .report-content h2, .report-content h3 {
+    color: var(--accent2); margin: 20px 0 10px;
+  }
+  .report-content h1 { font-size: 20px; }
+  .report-content h2 { font-size: 17px; }
+  .report-content h3 { font-size: 15px; }
+  .report-content ul, .report-content ol { padding-left: 20px; margin: 8px 0; }
+  .report-content li { margin: 4px 0; }
+  .report-content strong { color: var(--cyan); }
+  .report-content p { margin: 8px 0; }
+
+  /* Findings */
+  .findings-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 16px;
+  }
+  .finding-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px;
+    border-left: 4px solid var(--muted);
+  }
+  .finding-card[data-cat="Tendencias"] { border-left-color: var(--blue); }
+  .finding-card[data-cat="Adopción"] { border-left-color: var(--green); }
+  .finding-card[data-cat="Desafíos"] { border-left-color: var(--red); }
+  .finding-card[data-cat="Oportunidades"] { border-left-color: var(--yellow); }
+  .finding-card[data-cat="Regulación"] { border-left-color: var(--orange); }
+  .finding-card[data-cat="Impacto"] { border-left-color: var(--cyan); }
+  .finding-card[data-cat="Tecnología"] { border-left-color: var(--pink); }
+
+  .finding-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 10px;
+  }
+  .finding-cat {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .5px; color: var(--muted);
+  }
+  .confidence-badge {
+    font-size: 11px; padding: 2px 10px; border-radius: 20px;
+    font-weight: 600;
+  }
+  .confidence-badge.high { background: rgba(74,222,128,.15); color: var(--green); }
+  .confidence-badge.medium { background: rgba(250,204,21,.15); color: var(--yellow); }
+  .confidence-badge.low { background: rgba(248,113,113,.15); color: var(--red); }
+
+  .finding-text { font-size: 14px; line-height: 1.6; }
+
+  /* Sources */
+  .source-list { display: flex; flex-direction: column; gap: 8px; }
+  .source-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 18px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .source-icon { font-size: 22px; }
+  .source-info { flex: 1; min-width: 0; }
+  .source-title { font-size: 14px; font-weight: 500; }
+  .source-url { font-size: 12px; color: var(--muted); word-break: break-all; }
+  .source-preview { font-size: 12px; color: var(--muted); margin-top: 4px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; }
+
+  /* Add source */
+  .add-source-form {
+    display: flex; gap: 10px; margin-bottom: 16px;
+  }
+  .add-source-form input {
+    flex: 1; padding: 10px 14px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 14px; outline: none;
+  }
+  .add-source-form input:focus { border-color: var(--accent); }
+  .add-source-form button {
+    padding: 10px 20px; background: var(--accent);
+    border: none; border-radius: 8px; color: #fff;
+    font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+
+  /* Q&A Chat */
+  .chat-container { display: flex; flex-direction: column; height: 500px; }
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 16px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px 12px 0 0;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .chat-msg {
+    max-width: 85%; padding: 12px 16px;
+    border-radius: 12px; font-size: 14px; line-height: 1.6;
+  }
+  .chat-msg.user {
+    align-self: flex-end;
+    background: var(--accent); color: #fff;
+  }
+  .chat-msg.bot {
+    align-self: flex-start;
+    background: var(--surface2);
+  }
+  .chat-msg .sources-used {
+    margin-top: 8px; font-size: 11px; color: var(--muted);
+  }
+  .chat-input-row {
+    display: flex; gap: 0;
+  }
+  .chat-input-row input {
+    flex: 1; padding: 14px 18px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-top: none; border-radius: 0 0 0 12px;
+    color: var(--text); font-size: 14px; outline: none;
+  }
+  .chat-input-row button {
+    padding: 14px 24px;
+    background: var(--accent); border: none;
+    border-radius: 0 0 12px 0;
+    color: #fff; font-weight: 600; cursor: pointer;
+  }
+
+  /* Utilities */
+  .loading-spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty-state {
+    text-align: center; padding: 40px; color: var(--muted);
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h1>🔬 AI Research Agent</h1>
+    <p>Investigación automatizada con IA</p>
+  </div>
+
+  <div class="new-project">
+    <input type="text" id="topicInput" placeholder="Tema de investigación..."
+           onkeydown="if(event.key==='Enter')startResearch()">
+    <button id="startBtn" onclick="startResearch()">🚀 Investigar</button>
+  </div>
+
+  <div class="project-list" id="projectList"></div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="main-empty" id="emptyState">
+    <div class="icon">🔬</div>
+    <p>Selecciona o inicia un proyecto de investigación</p>
+  </div>
+
+  <div class="dashboard" id="dashboard">
+    <div class="dash-header">
+      <h2 id="dashTopic"></h2>
+      <span id="dashStatus"></span>
+    </div>
+
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-steps" id="progressSteps">
+      <div class="step" data-step="pending">⏳ Pendiente</div>
+      <div class="step" data-step="researching">🔎 Investigando</div>
+      <div class="step" data-step="analyzing">🧠 Analizando</div>
+      <div class="step" data-step="completed">✅ Completado</div>
+    </div>
+
+    <div class="tabs">
+      <div class="tab active" onclick="switchTab('report')">📄 Reporte</div>
+      <div class="tab" onclick="switchTab('findings')">💡 Hallazgos</div>
+      <div class="tab" onclick="switchTab('sources')">📚 Fuentes</div>
+      <div class="tab" onclick="switchTab('qa')">💬 Preguntas</div>
+    </div>
+
+    <!-- Report Tab -->
+    <div class="tab-content show" id="tab-report">
+      <div class="report-content" id="reportContent">
+        <div class="empty-state">
+          <div class="icon">📝</div>
+          <p>El reporte se generará al completar la investigación</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Findings Tab -->
+    <div class="tab-content" id="tab-findings">
+      <div class="findings-grid" id="findingsGrid"></div>
+    </div>
+
+    <!-- Sources Tab -->
+    <div class="tab-content" id="tab-sources">
+      <div class="add-source-form">
+        <input type="text" id="sourceUrlInput" placeholder="Pegar URL para scraping...">
+        <button onclick="addSource()">➕ Agregar</button>
+      </div>
+      <div class="source-list" id="sourceList"></div>
+    </div>
+
+    <!-- Q&A Tab -->
+    <div class="tab-content" id="tab-qa">
+      <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+          <div class="chat-msg bot">
+            👋 Hola! Puedes hacerme preguntas sobre esta investigación.
+          </div>
+        </div>
+        <div class="chat-input-row">
+          <input type="text" id="chatInput" placeholder="Pregunta sobre la investigación..."
+                 onkeydown="if(event.key==='Enter')sendQuery()">
+          <button onclick="sendQuery()">Enviar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '';
+let currentProject = null;
+let pollTimer = null;
+
+// ── Projects ──
+async function loadProjects() {
+  const res = await fetch(`${API}/research`);
+  const projects = await res.json();
+  const list = document.getElementById('projectList');
+  list.innerHTML = projects.map(p => `
+    <div class="project-item ${currentProject === p.id ? 'active' : ''}"
+         onclick="selectProject(${p.id})">
+      <div class="title">${esc(p.topic)}</div>
+      <div class="meta">
+        <span class="status-dot ${p.status}"></span>
+        <span>${p.status}</span>
+        <span>📚 ${p.sources_count}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function startResearch() {
+  const input = document.getElementById('topicInput');
+  const topic = input.value.trim();
+  if (!topic) return;
+
+  const btn = document.getElementById('startBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Iniciando...';
+
+  try {
+    const res = await fetch(`${API}/research`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({topic})
+    });
+    const data = await res.json();
+    input.value = '';
+    await loadProjects();
+    selectProject(data.project_id);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🚀 Investigar';
+  }
+}
+
+async function selectProject(id) {
+  currentProject = id;
+  document.getElementById('emptyState').style.display = 'none';
+  document.getElementById('dashboard').classList.add('show');
+
+  // Reset tabs
+  switchTab('report');
+
+  await refreshProject();
+  await loadProjects();
+
+  // Start polling if not completed
+  startPolling();
+}
+
+async function refreshProject() {
+  if (!currentProject) return;
+
+  const [projRes, findingsRes, sourcesRes] = await Promise.all([
+    fetch(`${API}/research/${currentProject}`),
+    fetch(`${API}/research/${currentProject}/findings`),
+    fetch(`${API}/research/${currentProject}/sources`)
+  ]);
+
+  const proj = await projRes.json();
+  const findings = await findingsRes.json();
+  const sources = await sourcesRes.json();
+
+  // Header
+  document.getElementById('dashTopic').textContent = proj.topic;
+
+  // Status badge
+  const statusEl = document.getElementById('dashStatus');
+  const statusColors = {
+    pending: 'var(--muted)', researching: 'var(--yellow)',
+    analyzing: 'var(--orange)', completed: 'var(--green)', failed: 'var(--red)'
+  };
+  statusEl.innerHTML = `<span style="color:${statusColors[proj.status]};font-weight:600;font-size:13px">
+    ${proj.status.toUpperCase()}</span>`;
+
+  // Progress
+  const steps = ['pending','researching','analyzing','completed'];
+  const stepIdx = steps.indexOf(proj.status);
+  const pct = proj.status === 'failed' ? 100 : ((stepIdx + 1) / steps.length * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+  if (proj.status === 'failed') {
+    document.getElementById('progressFill').style.background = 'var(--red)';
+  } else {
+    document.getElementById('progressFill').style.background = '';
+  }
+
+  document.querySelectorAll('.step').forEach(s => {
+    const si = steps.indexOf(s.dataset.step);
+    s.classList.remove('active','done');
+    if (si < stepIdx) s.classList.add('done');
+    else if (si === stepIdx) s.classList.add('active');
+  });
+
+  // Report
+  const reportEl = document.getElementById('reportContent');
+  if (proj.report) {
+    reportEl.innerHTML = renderMarkdown(proj.report);
+  } else if (proj.status === 'failed') {
+    reportEl.innerHTML = `<div class="empty-state"><div class="icon">❌</div>
+      <p>La investigación falló</p></div>`;
+  } else {
+    reportEl.innerHTML = `<div class="empty-state">
+      <div class="loading-spinner"></div>
+      <p style="margin-top:12px">Generando reporte...</p></div>`;
+  }
+
+  // Findings
+  const grid = document.getElementById('findingsGrid');
+  if (findings.length) {
+    grid.innerHTML = findings.map(f => `
+      <div class="finding-card" data-cat="${esc(f.category)}">
+        <div class="finding-header">
+          <span class="finding-cat">${esc(f.category)}</span>
+          <span class="confidence-badge ${f.confidence}">${f.confidence}</span>
+        </div>
+        <div class="finding-text">${esc(f.finding)}</div>
+      </div>
+    `).join('');
+  } else {
+    grid.innerHTML = `<div class="empty-state"><div class="icon">💡</div>
+      <p>Los hallazgos se extraerán durante el análisis</p></div>`;
+  }
+
+  // Sources
+  const srcList = document.getElementById('sourceList');
+  if (sources.length) {
+    // Group by URL
+    const grouped = {};
+    sources.forEach(s => {
+      const key = s.url || 'manual';
+      if (!grouped[key]) grouped[key] = { ...s, count: 0 };
+      grouped[key].count++;
+    });
+    srcList.innerHTML = Object.values(grouped).map(s => `
+      <div class="source-item">
+        <div class="source-icon">📄</div>
+        <div class="source-info">
+          <div class="source-title">${esc(s.title || 'Sin título')}</div>
+          ${s.url ? `<div class="source-url"><a href="${esc(s.url)}" target="_blank"
+            style="color:var(--accent)">${esc(s.url)}</a></div>` : ''}
+          <div class="source-preview">${s.count} chunks almacenados</div>
+        </div>
+      </div>
+    `).join('');
+  } else {
+    srcList.innerHTML = `<div class="empty-state"><div class="icon">📚</div>
+      <p>Sin fuentes aún</p></div>`;
+  }
+
+  // Stop polling if done
+  if (['completed','failed'].includes(proj.status)) {
+    stopPolling();
+  }
+}
+
+// ── Tabs ──
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('show'));
+  document.querySelector(`.tab:nth-child(${
+    {report:1, findings:2, sources:3, qa:4}[tab]
+  })`).classList.add('active');
+  document.getElementById(`tab-${tab}`).classList.add('show');
+}
+
+// ── Add Source ──
+async function addSource() {
+  const input = document.getElementById('sourceUrlInput');
+  const url = input.value.trim();
+  if (!url || !currentProject) return;
+
+  input.disabled = true;
+  try {
+    const res = await fetch(`${API}/research/${currentProject}/add-source`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({url})
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Error');
+    input.value = '';
+    await refreshProject();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    input.disabled = false;
+  }
+}
+
+// ── Q&A ──
+async function sendQuery() {
+  const input = document.getElementById('chatInput');
+  const question = input.value.trim();
+  if (!question || !currentProject) return;
+
+  const msgs = document.getElementById('chatMessages');
+
+  // User msg
+  msgs.innerHTML += `<div class="chat-msg user">${esc(question)}</div>`;
+  input.value = '';
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Loading
+  const loadId = 'load-' + Date.now();
+  msgs.innerHTML += `<div class="chat-msg bot" id="${loadId}">
+    <div class="loading-spinner"></div> Investigando...</div>`;
+  msgs.scrollTop = msgs.scrollHeight;
+
+  try {
+    const res = await fetch(`${API}/research/${currentProject}/query`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question})
+    });
+    const data = await res.json();
+
+    const loadEl = document.getElementById(loadId);
+    let sourcesHtml = '';
+    if (data.sources && data.sources.length) {
+      sourcesHtml = `<div class="sources-used">📚 Fuentes: ${
+        data.sources.map(s => `${s.title} (${(s.similarity * 100).toFixed(0)}%)`).join(', ')
+      }</div>`;
+    }
+    loadEl.innerHTML = renderMarkdown(data.answer) + sourcesHtml;
+  } catch (e) {
+    const loadEl = document.getElementById(loadId);
+    loadEl.innerHTML = '❌ Error: ' + e.message;
+  }
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+// ── Polling ──
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(refreshProject, 3000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// ── Helpers ──
+function esc(s) {
+  if (!s) return '';
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  return text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+    .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.+?)\*/g, '<em>$1</em>')
+    .replace(/^- (.+)$/gm, '<li>$1</li>')
+    .replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>')
+    .replace(/\n{2,}/g, '</p><p>')
+    .replace(/\n/g, '<br>')
+    .replace(/^/, '<p>').replace(/$/, '</p>');
+}
+
+// Init
+loadProjects();
+</script>
+</body>
+</html>

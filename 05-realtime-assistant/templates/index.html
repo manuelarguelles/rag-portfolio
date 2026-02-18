@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Real-Time RAG Assistant</title>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a2e;
+    --surface2: #16213e;
+    --accent: #6c63ff;
+    --accent2: #e94560;
+    --text: #eee;
+    --text-dim: #888;
+    --user-bubble: #6c63ff;
+    --assistant-bubble: #1e293b;
+    --border: #2a2a4a;
+    --green: #22c55e;
+    --sidebar-w: 260px;
+    --kb-w: 320px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+  }
+
+  /* ── Sidebar ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    min-width: var(--sidebar-w);
+    background: var(--surface);
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+  }
+
+  .sidebar-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .sidebar-header h2 {
+    font-size: 14px;
+    font-weight: 600;
+    flex: 1;
+  }
+
+  .btn-new {
+    background: var(--accent);
+    border: none;
+    color: white;
+    padding: 8px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all .2s;
+  }
+  .btn-new:hover { opacity: .85; transform: scale(1.02); }
+
+  .conv-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .conv-item {
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-bottom: 4px;
+    font-size: 13px;
+    transition: background .15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .conv-item:hover { background: var(--surface2); }
+  .conv-item.active { background: var(--accent); }
+
+  .conv-item .icon { font-size: 16px; }
+  .conv-item .label {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .conv-item .count {
+    font-size: 11px;
+    color: var(--text-dim);
+    background: rgba(255,255,255,.1);
+    padding: 2px 6px;
+    border-radius: 10px;
+  }
+  .conv-item.active .count { color: rgba(255,255,255,.7); }
+
+  .sidebar-footer {
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-dim);
+    text-align: center;
+  }
+
+  /* ── Main area ── */
+  .main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .main-header {
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--surface);
+  }
+  .main-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .btn-kb {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-kb:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-kb.active { background: var(--accent); border-color: var(--accent); }
+
+  /* ── Messages ── */
+  .messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .messages::-webkit-scrollbar { width: 6px; }
+  .messages::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+  .msg {
+    max-width: 75%;
+    padding: 12px 16px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.6;
+    word-wrap: break-word;
+    animation: fadeIn .2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .msg.user {
+    align-self: flex-end;
+    background: var(--user-bubble);
+    border-bottom-right-radius: 4px;
+  }
+
+  .msg.assistant {
+    align-self: flex-start;
+    background: var(--assistant-bubble);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  .msg.assistant .sources {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(255,255,255,.1);
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .msg.assistant .sources span {
+    background: rgba(108,99,255,.2);
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-right: 4px;
+    display: inline-block;
+    margin-bottom: 3px;
+  }
+
+  /* markdown in messages */
+  .msg code {
+    background: rgba(255,255,255,.1);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+  }
+  .msg pre {
+    background: rgba(0,0,0,.3);
+    padding: 10px;
+    border-radius: 8px;
+    overflow-x: auto;
+    margin: 8px 0;
+  }
+  .msg pre code { background: transparent; padding: 0; }
+  .msg ul, .msg ol { margin-left: 18px; }
+  .msg p { margin-bottom: 6px; }
+  .msg p:last-child { margin-bottom: 0; }
+  .msg h1, .msg h2, .msg h3 { margin: 8px 0 4px; font-size: 15px; }
+  .msg strong { color: #fff; }
+  .msg a { color: var(--accent); }
+
+  .status-bar {
+    padding: 8px 20px;
+    font-size: 12px;
+    color: var(--green);
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+  .status-bar.visible { display: flex; }
+
+  .dot-pulse {
+    display: inline-flex;
+    gap: 3px;
+  }
+  .dot-pulse span {
+    width: 5px; height: 5px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 1.2s infinite;
+  }
+  .dot-pulse span:nth-child(2) { animation-delay: .2s; }
+  .dot-pulse span:nth-child(3) { animation-delay: .4s; }
+
+  @keyframes pulse {
+    0%, 80%, 100% { opacity: .3; transform: scale(.8); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+
+  .welcome {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-dim);
+    gap: 12px;
+  }
+  .welcome .icon { font-size: 48px; }
+  .welcome h2 { font-size: 20px; color: var(--text); }
+
+  /* ── Input ── */
+  .input-area {
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+  }
+
+  .input-row textarea {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    padding: 12px 16px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: none;
+    max-height: 120px;
+    line-height: 1.4;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .input-row textarea:focus { border-color: var(--accent); }
+  .input-row textarea::placeholder { color: #555; }
+
+  .btn-send {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    background: var(--accent);
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-size: 18px;
+    transition: all .2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .btn-send:hover { transform: scale(1.05); }
+  .btn-send:disabled { opacity: .4; cursor: default; transform: none; }
+
+  /* ── Knowledge panel ── */
+  .kb-panel {
+    width: 0;
+    overflow: hidden;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    transition: width .3s ease;
+    display: flex;
+    flex-direction: column;
+  }
+  .kb-panel.open { width: var(--kb-w); min-width: var(--kb-w); }
+
+  .kb-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .kb-header h3 { font-size: 14px; }
+
+  .kb-close {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 18px;
+  }
+
+  .kb-form {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .kb-form input, .kb-form textarea {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 8px 12px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    margin-bottom: 8px;
+  }
+  .kb-form textarea { resize: vertical; min-height: 80px; }
+  .kb-form input:focus, .kb-form textarea:focus { border-color: var(--accent); }
+
+  .kb-form .or-divider {
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 11px;
+    margin: 4px 0 8px;
+  }
+
+  .btn-add {
+    width: 100%;
+    background: var(--accent2);
+    border: none;
+    color: white;
+    padding: 8px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .btn-add:hover { opacity: .85; }
+  .btn-add:disabled { opacity: .4; }
+
+  .kb-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .kb-item {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    position: relative;
+  }
+  .kb-item .title { font-weight: 600; margin-bottom: 4px; }
+  .kb-item .preview { color: var(--text-dim); line-height: 1.4; }
+  .kb-item .meta {
+    margin-top: 6px;
+    color: var(--text-dim);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .kb-item .btn-del {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: none;
+    border: none;
+    color: var(--accent2);
+    cursor: pointer;
+    font-size: 14px;
+    opacity: 0;
+    transition: opacity .2s;
+  }
+  .kb-item:hover .btn-del { opacity: 1; }
+
+  /* scrollbars */
+  .conv-list::-webkit-scrollbar, .kb-list::-webkit-scrollbar { width: 4px; }
+  .conv-list::-webkit-scrollbar-thumb, .kb-list::-webkit-scrollbar-thumb {
+    background: #333; border-radius: 2px;
+  }
+
+  @media (max-width: 800px) {
+    .sidebar { width: 200px; min-width: 200px; }
+    .kb-panel.open { width: 260px; min-width: 260px; }
+    .msg { max-width: 90%; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="sidebar-header">
+    <h2>💬 Conversations</h2>
+    <button class="btn-new" onclick="newConversation()">+ New</button>
+  </div>
+  <div class="conv-list" id="convList"></div>
+  <div class="sidebar-footer">Real-Time RAG Assistant · Project 5</div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <div class="main-header">
+    <h3 id="mainTitle">Real-Time RAG Assistant</h3>
+    <button class="btn-kb" id="kbToggle" onclick="toggleKB()">
+      📚 Knowledge Base
+    </button>
+  </div>
+
+  <div class="messages" id="messages">
+    <div class="welcome">
+      <div class="icon">🤖</div>
+      <h2>Real-Time RAG Assistant</h2>
+      <p>Create a conversation to start chatting</p>
+      <p style="font-size:12px">Add knowledge via the panel on the right →</p>
+    </div>
+  </div>
+
+  <div class="status-bar" id="statusBar">
+    <div class="dot-pulse"><span></span><span></span><span></span></div>
+    <span id="statusText">Thinking...</span>
+  </div>
+
+  <div class="input-area">
+    <div class="input-row">
+      <textarea id="chatInput" placeholder="Type your message..." rows="1"
+                onkeydown="handleKey(event)" oninput="autoResize(this)"></textarea>
+      <button class="btn-send" id="btnSend" onclick="sendMessage()" title="Send">▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- Knowledge Panel -->
+<div class="kb-panel" id="kbPanel">
+  <div class="kb-header">
+    <h3>📚 Knowledge Base</h3>
+    <button class="kb-close" onclick="toggleKB()">✕</button>
+  </div>
+  <div class="kb-form">
+    <input type="text" id="kbTitle" placeholder="Title (optional)">
+    <textarea id="kbContent" placeholder="Paste text content here..."></textarea>
+    <div class="or-divider">— or add from URL —</div>
+    <input type="url" id="kbUrl" placeholder="https://example.com/article">
+    <button class="btn-add" id="btnAdd" onclick="addKnowledge()">+ Add to Knowledge Base</button>
+  </div>
+  <div class="kb-list" id="kbList"></div>
+</div>
+
+<script>
+// ── State ──
+let currentConv = null;
+let streaming = false;
+
+// ── Conversations ──
+async function loadConversations() {
+  const r = await fetch('/conversations');
+  const data = await r.json();
+  const el = document.getElementById('convList');
+  el.innerHTML = data.map(c => {
+    const label = c.first_message
+      ? c.first_message.substring(0, 40) + (c.first_message.length > 40 ? '…' : '')
+      : `Conversation #${c.id}`;
+    const active = currentConv === c.id ? ' active' : '';
+    return `<div class="conv-item${active}" onclick="selectConv(${c.id})">
+      <span class="icon">💬</span>
+      <span class="label">${escapeHtml(label)}</span>
+      <span class="count">${c.msg_count}</span>
+    </div>`;
+  }).join('');
+}
+
+async function newConversation() {
+  const r = await fetch('/conversations', { method: 'POST' });
+  const data = await r.json();
+  currentConv = data.id;
+  await loadConversations();
+  await loadMessages();
+}
+
+async function selectConv(id) {
+  currentConv = id;
+  await loadConversations();
+  await loadMessages();
+}
+
+// ── Messages ──
+async function loadMessages() {
+  const el = document.getElementById('messages');
+  if (!currentConv) {
+    el.innerHTML = `<div class="welcome">
+      <div class="icon">🤖</div>
+      <h2>Real-Time RAG Assistant</h2>
+      <p>Create a conversation to start chatting</p>
+    </div>`;
+    return;
+  }
+
+  const r = await fetch(`/conversations/${currentConv}/messages`);
+  const data = await r.json();
+
+  if (data.length === 0) {
+    el.innerHTML = `<div class="welcome">
+      <div class="icon">✨</div>
+      <h2>New Conversation</h2>
+      <p>Ask anything — I'll search the knowledge base and stream my response</p>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = data.map(m => {
+    let sourcesHtml = '';
+    if (m.role === 'assistant' && m.chunks_used && m.chunks_used.length > 0) {
+      const validChunks = m.chunks_used.filter(c => c.similarity > 0.3);
+      if (validChunks.length > 0) {
+        sourcesHtml = `<div class="sources">Sources: ${validChunks.map(c =>
+          `<span>${escapeHtml(c.title || 'chunk-' + c.id)} (${(c.similarity * 100).toFixed(0)}%)</span>`
+        ).join('')}</div>`;
+      }
+    }
+    return `<div class="msg ${m.role}">${renderMarkdown(m.content)}${sourcesHtml}</div>`;
+  }).join('');
+
+  el.scrollTop = el.scrollHeight;
+}
+
+// ── Send & Stream ──
+async function sendMessage() {
+  const input = document.getElementById('chatInput');
+  const text = input.value.trim();
+  if (!text || streaming) return;
+  if (!currentConv) {
+    await newConversation();
+  }
+
+  input.value = '';
+  autoResize(input);
+  streaming = true;
+  document.getElementById('btnSend').disabled = true;
+
+  // Add user bubble
+  const msgEl = document.getElementById('messages');
+  // Remove welcome if present
+  const welcome = msgEl.querySelector('.welcome');
+  if (welcome) welcome.remove();
+
+  msgEl.insertAdjacentHTML('beforeend',
+    `<div class="msg user">${escapeHtml(text)}</div>`);
+  msgEl.scrollTop = msgEl.scrollHeight;
+
+  // Show status
+  setStatus('Searching knowledge base...', true);
+
+  // Create assistant bubble
+  const assistantDiv = document.createElement('div');
+  assistantDiv.className = 'msg assistant';
+  assistantDiv.innerHTML = '<span class="streaming-cursor">▍</span>';
+  msgEl.appendChild(assistantDiv);
+
+  let fullText = '';
+  let searchResults = [];
+
+  try {
+    const response = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conversation_id: currentConv, message: text }),
+    });
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+
+      for (const line of lines) {
+        if (line.startsWith('event: search')) {
+          // next data line has search results
+          continue;
+        }
+        if (line.startsWith('event: done')) {
+          continue;
+        }
+        if (line.startsWith('event: error')) {
+          continue;
+        }
+        if (!line.startsWith('data: ')) continue;
+
+        const payload = line.slice(6);
+        try {
+          const data = JSON.parse(payload);
+          if (data.token !== undefined) {
+            if (fullText === '') {
+              setStatus('Generating response...', true);
+            }
+            fullText += data.token;
+            assistantDiv.innerHTML = renderMarkdown(fullText) + '<span class="streaming-cursor" style="color:var(--accent)">▍</span>';
+            msgEl.scrollTop = msgEl.scrollHeight;
+          }
+          if (data.error) {
+            assistantDiv.innerHTML = `<span style="color:var(--accent2)">Error: ${escapeHtml(data.error)}</span>`;
+          }
+          // search results are in an array
+          if (Array.isArray(data)) {
+            searchResults = data;
+          }
+        } catch (e) {
+          // might be the search results array
+          try {
+            const arr = JSON.parse(payload);
+            if (Array.isArray(arr)) searchResults = arr;
+          } catch(e2) {}
+        }
+      }
+    }
+  } catch (e) {
+    assistantDiv.innerHTML = `<span style="color:var(--accent2)">Connection error: ${escapeHtml(e.message)}</span>`;
+  }
+
+  // Finalize
+  let sourcesHtml = '';
+  if (searchResults.length > 0) {
+    const valid = searchResults.filter(c => c.similarity > 0.3);
+    if (valid.length > 0) {
+      sourcesHtml = `<div class="sources">Sources: ${valid.map(c =>
+        `<span>${escapeHtml(c.title || 'chunk-' + c.id)} (${(c.similarity * 100).toFixed(0)}%)</span>`
+      ).join('')}</div>`;
+    }
+  }
+  assistantDiv.innerHTML = renderMarkdown(fullText) + sourcesHtml;
+  msgEl.scrollTop = msgEl.scrollHeight;
+
+  setStatus('', false);
+  streaming = false;
+  document.getElementById('btnSend').disabled = false;
+  input.focus();
+  loadConversations();
+}
+
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── Knowledge Base ──
+function toggleKB() {
+  const panel = document.getElementById('kbPanel');
+  const btn = document.getElementById('kbToggle');
+  panel.classList.toggle('open');
+  btn.classList.toggle('active');
+  if (panel.classList.contains('open')) loadKnowledge();
+}
+
+async function loadKnowledge() {
+  const r = await fetch('/knowledge');
+  const data = await r.json();
+  const el = document.getElementById('kbList');
+  if (data.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:13px">No knowledge added yet.<br>Add text or URLs above.</div>';
+    return;
+  }
+  el.innerHTML = data.map(k => `
+    <div class="kb-item">
+      <button class="btn-del" onclick="deleteKnowledge(${k.id})" title="Delete">🗑</button>
+      <div class="title">${escapeHtml(k.title || 'Untitled')}</div>
+      <div class="preview">${escapeHtml(k.preview || '')}</div>
+      <div class="meta">
+        <span>${k.source ? escapeHtml(k.source.substring(0, 30)) : 'Manual'}</span>
+        <span>${new Date(k.created_at).toLocaleDateString()}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function addKnowledge() {
+  const title = document.getElementById('kbTitle').value.trim();
+  const content = document.getElementById('kbContent').value.trim();
+  const url = document.getElementById('kbUrl').value.trim();
+
+  if (!content && !url) {
+    alert('Provide text content or a URL');
+    return;
+  }
+
+  const btn = document.getElementById('btnAdd');
+  btn.disabled = true;
+  btn.textContent = 'Adding...';
+
+  try {
+    const r = await fetch('/knowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content, url }),
+    });
+    if (!r.ok) {
+      const err = await r.json();
+      throw new Error(err.detail || 'Failed');
+    }
+    document.getElementById('kbTitle').value = '';
+    document.getElementById('kbContent').value = '';
+    document.getElementById('kbUrl').value = '';
+    await loadKnowledge();
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '+ Add to Knowledge Base';
+  }
+}
+
+async function deleteKnowledge(id) {
+  if (!confirm('Delete this knowledge item?')) return;
+  await fetch(`/knowledge/${id}`, { method: 'DELETE' });
+  loadKnowledge();
+}
+
+// ── Helpers ──
+function setStatus(text, visible) {
+  const bar = document.getElementById('statusBar');
+  const txt = document.getElementById('statusText');
+  txt.textContent = text;
+  bar.classList.toggle('visible', visible);
+}
+
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+          .replace(/"/g,'&quot;');
+}
+
+function renderMarkdown(text) {
+  if (!text) return '';
+  let html = escapeHtml(text);
+
+  // code blocks
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  html = html.replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>');
+  // inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // bold
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // italic
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  // headers
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // links
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  // lists
+  html = html.replace(/^\- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // paragraphs
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  // clean up
+  html = html.replace(/<p><\/p>/g, '');
+  html = html.replace(/<p>(<h[123]>)/g, '$1');
+  html = html.replace(/(<\/h[123]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+
+  return html;
+}
+
+// ── Init ──
+loadConversations();
+</script>
+</body>
+</html>

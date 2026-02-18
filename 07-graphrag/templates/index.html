@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GraphRAG — Knowledge Graph Pipeline</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+    --bg-primary: #0a0a0f;
+    --bg-secondary: #12121a;
+    --bg-tertiary: #1a1a2e;
+    --bg-card: #16162a;
+    --border: #2a2a4a;
+    --border-glow: #4a4a8a;
+    --text-primary: #e8e8f0;
+    --text-secondary: #9898b8;
+    --text-muted: #686888;
+    --accent-person: #ff6b9d;
+    --accent-place: #4ecdc4;
+    --accent-org: #ffd93d;
+    --accent-concept: #a78bfa;
+    --accent-date: #6ee7b7;
+    --accent-primary: #7c5bf5;
+    --accent-hover: #9b7ff7;
+    --glow-purple: rgba(124, 91, 245, 0.15);
+    --glow-graph: rgba(78, 205, 196, 0.08);
+    --success: #22c55e;
+    --error: #ef4444;
+    --warning: #f59e0b;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', -apple-system, sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* Header */
+.header {
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.header h1 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--accent-primary), var(--accent-place));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+.header h1 .icon { font-size: 1.6rem; -webkit-text-fill-color: initial; }
+.header .subtitle {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    font-weight: 400;
+}
+
+/* Stats Bar */
+.stats-bar {
+    display: flex;
+    gap: 16px;
+    padding: 16px 32px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+}
+.stat-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    font-size: 0.82rem;
+}
+.stat-chip .num {
+    font-weight: 700;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--accent-primary);
+}
+.entity-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.type-PERSON { background: rgba(255,107,157,0.15); color: var(--accent-person); border: 1px solid rgba(255,107,157,0.3); }
+.type-PLACE { background: rgba(78,205,196,0.15); color: var(--accent-place); border: 1px solid rgba(78,205,196,0.3); }
+.type-ORGANIZATION { background: rgba(255,217,61,0.15); color: var(--accent-org); border: 1px solid rgba(255,217,61,0.3); }
+.type-CONCEPT { background: rgba(167,139,250,0.15); color: var(--accent-concept); border: 1px solid rgba(167,139,250,0.3); }
+.type-DATE { background: rgba(110,231,183,0.15); color: var(--accent-date); border: 1px solid rgba(110,231,183,0.3); }
+
+/* Main Layout */
+.main-layout {
+    display: grid;
+    grid-template-columns: 1fr 420px;
+    grid-template-rows: 1fr auto;
+    height: calc(100vh - 120px);
+    gap: 0;
+}
+
+/* Graph Panel */
+.graph-panel {
+    position: relative;
+    border-right: 1px solid var(--border);
+    background: radial-gradient(ellipse at center, var(--glow-graph) 0%, var(--bg-primary) 70%);
+}
+#graph-container {
+    width: 100%;
+    height: 100%;
+}
+.graph-overlay {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+}
+.graph-btn {
+    padding: 8px 14px;
+    background: rgba(22, 22, 42, 0.9);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.78rem;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+}
+.graph-btn:hover { border-color: var(--accent-primary); color: var(--text-primary); }
+.graph-legend {
+    position: absolute;
+    bottom: 16px;
+    left: 16px;
+    display: flex;
+    gap: 12px;
+    z-index: 10;
+    flex-wrap: wrap;
+}
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: rgba(22, 22, 42, 0.85);
+    padding: 5px 10px;
+    border-radius: 6px;
+    backdrop-filter: blur(10px);
+}
+.legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+}
+
+/* Right Sidebar */
+.sidebar {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-secondary);
+    overflow: hidden;
+}
+.tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-tertiary);
+}
+.tab-btn {
+    flex: 1;
+    padding: 12px 8px;
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+}
+.tab-btn.active {
+    color: var(--accent-primary);
+    border-bottom-color: var(--accent-primary);
+    background: rgba(124, 91, 245, 0.05);
+}
+.tab-btn:hover { color: var(--text-primary); }
+
+.tab-content { display: none; flex: 1; overflow-y: auto; padding: 20px; }
+.tab-content.active { display: flex; flex-direction: column; gap: 16px; }
+
+/* Query Tab */
+.query-input-group {
+    display: flex;
+    gap: 8px;
+}
+.query-input {
+    flex: 1;
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.query-input:focus { border-color: var(--accent-primary); }
+.query-input::placeholder { color: var(--text-muted); }
+
+.btn-primary {
+    padding: 12px 20px;
+    background: var(--accent-primary);
+    border: none;
+    border-radius: 10px;
+    color: white;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Inter', sans-serif;
+    white-space: nowrap;
+}
+.btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.answer-box {
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    font-size: 0.88rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    min-height: 120px;
+    overflow-wrap: break-word;
+}
+.answer-box strong, .answer-box b { color: var(--accent-primary); font-weight: 600; }
+.answer-box .placeholder { color: var(--text-muted); font-style: italic; }
+
+.entities-used {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+.entity-tag {
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+/* Ingest Tab */
+.ingest-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.form-label {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.form-input {
+    padding: 12px 16px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 0.9rem;
+    font-family: 'Inter', sans-serif;
+    outline: none;
+    transition: border-color 0.2s;
+}
+.form-input:focus { border-color: var(--accent-primary); }
+.form-textarea {
+    min-height: 200px;
+    resize: vertical;
+    line-height: 1.6;
+}
+.ingest-result {
+    padding: 14px;
+    border-radius: 10px;
+    font-size: 0.85rem;
+    display: none;
+}
+.ingest-result.success { background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.3); color: var(--success); display: block; }
+.ingest-result.error { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); color: var(--error); display: block; }
+
+/* Documents Tab */
+.doc-card {
+    padding: 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.2s;
+}
+.doc-card:hover { border-color: var(--border-glow); }
+.doc-title {
+    font-weight: 600;
+    font-size: 0.92rem;
+    margin-bottom: 6px;
+}
+.doc-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.doc-meta span { display: flex; align-items: center; gap: 4px; }
+
+/* Entities Tab */
+.entity-list { display: flex; flex-direction: column; gap: 8px; }
+.entity-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    transition: border-color 0.2s;
+}
+.entity-item:hover { border-color: var(--border-glow); }
+.entity-name { font-weight: 500; font-size: 0.88rem; flex: 1; }
+.entity-desc { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+/* Spinner */
+.spinner {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Graph paths */
+.graph-path {
+    padding: 8px 12px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    font-size: 0.78rem;
+    font-family: 'JetBrains Mono', monospace;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+.path-source { color: var(--accent-person); }
+.path-rel { color: var(--accent-org); font-weight: 600; }
+.path-target { color: var(--accent-place); }
+
+/* Section headers */
+.section-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-glow); }
+
+/* Responsive */
+@media (max-width: 900px) {
+    .main-layout { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+    .graph-panel { border-right: none; border-bottom: 1px solid var(--border); }
+}
+
+.loading-graph {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+.loading-graph .spinner { width: 32px; height: 32px; margin-bottom: 12px; border-width: 3px; border-color: rgba(124,91,245,0.2); border-top-color: var(--accent-primary); }
+
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: var(--text-muted);
+}
+.empty-state .icon { font-size: 2.5rem; margin-bottom: 12px; }
+.empty-state p { font-size: 0.85rem; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="header">
+    <div>
+        <h1><span class="icon">🕸️</span> GraphRAG Pipeline</h1>
+        <div class="subtitle">Knowledge Graph + Vector Search — Powered by PostgreSQL</div>
+    </div>
+</div>
+
+<!-- Stats Bar -->
+<div class="stats-bar" id="stats-bar">
+    <div class="stat-chip">📄 <span class="num" id="stat-docs">-</span> Documents</div>
+    <div class="stat-chip">🔵 <span class="num" id="stat-entities">-</span> Entities</div>
+    <div class="stat-chip">🔗 <span class="num" id="stat-rels">-</span> Relationships</div>
+    <div class="stat-chip">📦 <span class="num" id="stat-chunks">-</span> Chunks</div>
+    <div id="entity-type-chips"></div>
+</div>
+
+<!-- Main Layout -->
+<div class="main-layout">
+    <!-- Graph Panel -->
+    <div class="graph-panel">
+        <div class="graph-overlay">
+            <button class="graph-btn" onclick="resetGraph()">⟳ Reset View</button>
+            <button class="graph-btn" onclick="togglePhysics()">⚡ Physics</button>
+        </div>
+        <div id="graph-container">
+            <div class="loading-graph" id="graph-loading">
+                <div class="spinner"></div>
+                <div>Loading knowledge graph…</div>
+            </div>
+        </div>
+        <div class="graph-legend">
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-person)"></div> Person</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-place)"></div> Place</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-org)"></div> Organization</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-concept)"></div> Concept</div>
+            <div class="legend-item"><div class="legend-dot" style="background:var(--accent-date)"></div> Date</div>
+        </div>
+    </div>
+
+    <!-- Right Sidebar -->
+    <div class="sidebar">
+        <div class="tab-bar">
+            <button class="tab-btn active" onclick="switchTab('query')">🔍 Query</button>
+            <button class="tab-btn" onclick="switchTab('ingest')">📥 Ingest</button>
+            <button class="tab-btn" onclick="switchTab('docs')">📄 Docs</button>
+            <button class="tab-btn" onclick="switchTab('entities')">🔵 Entities</button>
+        </div>
+
+        <!-- Query Tab -->
+        <div class="tab-content active" id="tab-query">
+            <div class="query-input-group">
+                <input type="text" class="query-input" id="query-input"
+                       placeholder="Ask about the knowledge graph…"
+                       onkeydown="if(event.key==='Enter') doQuery()">
+                <button class="btn-primary" id="query-btn" onclick="doQuery()">Ask</button>
+            </div>
+            <div class="answer-box" id="answer-box">
+                <div class="placeholder">Ask a question to query the knowledge graph. The system combines vector similarity search with graph traversal to find relevant entities and relationships.</div>
+            </div>
+            <div id="query-entities"></div>
+            <div id="query-paths"></div>
+        </div>
+
+        <!-- Ingest Tab -->
+        <div class="tab-content" id="tab-ingest">
+            <div class="ingest-form">
+                <div>
+                    <div class="form-label">Document Title</div>
+                    <input type="text" class="form-input" id="ingest-title" placeholder="e.g., The Conquest of Peru" style="width:100%;margin-top:6px">
+                </div>
+                <div>
+                    <div class="form-label">Content</div>
+                    <textarea class="form-input form-textarea" id="ingest-content" placeholder="Paste the text content here…" style="width:100%;margin-top:6px"></textarea>
+                </div>
+                <button class="btn-primary" id="ingest-btn" onclick="doIngest()" style="align-self:flex-start">
+                    📥 Ingest Document
+                </button>
+                <div class="ingest-result" id="ingest-result"></div>
+            </div>
+        </div>
+
+        <!-- Documents Tab -->
+        <div class="tab-content" id="tab-docs">
+            <div id="docs-list">
+                <div class="empty-state">
+                    <div class="icon">📄</div>
+                    <p>No documents yet. Ingest some text to get started.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Entities Tab -->
+        <div class="tab-content" id="tab-entities">
+            <div class="entity-list" id="entities-list">
+                <div class="empty-state">
+                    <div class="icon">🔵</div>
+                    <p>No entities yet. Ingest a document to extract entities.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────
+let network = null;
+let physicsEnabled = true;
+
+const TYPE_COLORS = {
+    PERSON: '#ff6b9d',
+    PLACE: '#4ecdc4',
+    ORGANIZATION: '#ffd93d',
+    CONCEPT: '#a78bfa',
+    DATE: '#6ee7b7',
+};
+
+// ── Tabs ───────────────────────────────────────────
+function switchTab(name) {
+    document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.classList.toggle('active', b.textContent.includes(
+            {query:'Query', ingest:'Ingest', docs:'Docs', entities:'Entities'}[name]
+        ));
+    });
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+
+    if (name === 'docs') loadDocs();
+    if (name === 'entities') loadEntities();
+}
+
+// ── Graph ──────────────────────────────────────────
+async function loadGraph() {
+    try {
+        const res = await fetch('/graph');
+        const data = await res.json();
+        document.getElementById('graph-loading').style.display = 'none';
+
+        if (data.nodes.length === 0) {
+            document.getElementById('graph-loading').style.display = 'block';
+            document.getElementById('graph-loading').innerHTML = `
+                <div class="icon" style="font-size:2.5rem;margin-bottom:12px">🕸️</div>
+                <div>No entities yet — ingest a document to see the graph</div>
+            `;
+            return;
+        }
+
+        const nodes = new vis.DataSet(data.nodes.map(n => ({
+            id: n.id,
+            label: n.label,
+            title: `${n.type}: ${n.description || n.label}`,
+            color: {
+                background: TYPE_COLORS[n.type] || '#888',
+                border: TYPE_COLORS[n.type] || '#888',
+                highlight: { background: '#fff', border: TYPE_COLORS[n.type] || '#888' },
+            },
+            font: { color: '#e8e8f0', size: 13, face: 'Inter' },
+            shape: 'dot',
+            size: 18,
+            borderWidth: 2,
+            shadow: { enabled: true, color: (TYPE_COLORS[n.type] || '#888') + '40', size: 12 },
+        })));
+
+        const edges = new vis.DataSet(data.edges.map(e => ({
+            id: e.id,
+            from: e.from,
+            to: e.to,
+            label: e.label,
+            title: e.description || e.label,
+            color: { color: '#4a4a6a', highlight: '#7c5bf5', hover: '#7c5bf5' },
+            font: { color: '#686888', size: 10, face: 'JetBrains Mono', strokeWidth: 0, align: 'top' },
+            arrows: { to: { enabled: true, scaleFactor: 0.6 } },
+            smooth: { type: 'curvedCW', roundness: 0.15 },
+            width: 1.5,
+        })));
+
+        const container = document.getElementById('graph-container');
+        network = new vis.Network(container, { nodes, edges }, {
+            physics: {
+                enabled: true,
+                solver: 'forceAtlas2Based',
+                forceAtlas2Based: {
+                    gravitationalConstant: -80,
+                    centralGravity: 0.008,
+                    springLength: 160,
+                    springConstant: 0.03,
+                    damping: 0.5,
+                },
+                stabilization: { iterations: 200 },
+            },
+            interaction: {
+                hover: true,
+                tooltipDelay: 100,
+                zoomView: true,
+                dragView: true,
+            },
+            layout: { improvedLayout: true },
+        });
+
+        // Highlight neighbors on select
+        network.on('selectNode', params => {
+            const nodeId = params.nodes[0];
+            const connected = network.getConnectedNodes(nodeId);
+            const connEdges = network.getConnectedEdges(nodeId);
+            // Could add highlighting logic here
+        });
+    } catch (e) {
+        document.getElementById('graph-loading').innerHTML = `
+            <div style="color:var(--error)">Failed to load graph: ${e.message}</div>
+        `;
+    }
+}
+
+function resetGraph() {
+    if (network) network.fit({ animation: true });
+}
+
+function togglePhysics() {
+    physicsEnabled = !physicsEnabled;
+    if (network) network.setOptions({ physics: { enabled: physicsEnabled } });
+}
+
+// ── Stats ──────────────────────────────────────────
+async function loadStats() {
+    try {
+        const res = await fetch('/stats');
+        const data = await res.json();
+        document.getElementById('stat-docs').textContent = data.documents;
+        document.getElementById('stat-entities').textContent = data.total_entities;
+        document.getElementById('stat-rels').textContent = data.relationships;
+        document.getElementById('stat-chunks').textContent = data.chunks;
+
+        const chips = document.getElementById('entity-type-chips');
+        chips.innerHTML = data.entity_types.map(t =>
+            `<span class="entity-type-badge type-${t.entity_type}">${t.entity_type} ${t.count}</span>`
+        ).join('');
+    } catch (e) { /* silent */ }
+}
+
+// ── Query ──────────────────────────────────────────
+async function doQuery() {
+    const input = document.getElementById('query-input');
+    const btn = document.getElementById('query-btn');
+    const box = document.getElementById('answer-box');
+    const question = input.value.trim();
+    if (!question) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div>';
+    box.innerHTML = '<div class="placeholder">Searching knowledge graph…</div>';
+    document.getElementById('query-entities').innerHTML = '';
+    document.getElementById('query-paths').innerHTML = '';
+
+    try {
+        const res = await fetch('/query', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ question }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            box.innerHTML = `<div style="color:var(--error)">${data.error}</div>`;
+        } else {
+            // Render answer (convert **bold** to <strong>)
+            let html = data.answer
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\n/g, '<br>');
+            box.innerHTML = html;
+
+            // Entities used
+            if (data.entities_used && data.entities_used.length > 0) {
+                document.getElementById('query-entities').innerHTML = `
+                    <div class="section-title">Entities Found</div>
+                    <div class="entities-used">
+                        ${data.entities_used.map(e => 
+                            `<span class="entity-tag type-${e.entity_type}">${e.name}</span>`
+                        ).join('')}
+                    </div>
+                `;
+            }
+
+            // Graph paths
+            if (data.graph_paths && data.graph_paths.length > 0) {
+                const pathsHtml = data.graph_paths.slice(0, 10).map(p =>
+                    `<div class="graph-path">
+                        <span class="path-source">${p.source_name}</span>
+                        <span class="path-rel"> —[${p.rel_type}]→ </span>
+                        <span class="path-target">${p.target_name}</span>
+                    </div>`
+                ).join('');
+                document.getElementById('query-paths').innerHTML = `
+                    <div class="section-title">Graph Relationships (${data.graph_paths.length})</div>
+                    ${pathsHtml}
+                `;
+            }
+        }
+    } catch (e) {
+        box.innerHTML = `<div style="color:var(--error)">Error: ${e.message}</div>`;
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Ask';
+    }
+}
+
+// ── Ingest ─────────────────────────────────────────
+async function doIngest() {
+    const title = document.getElementById('ingest-title').value.trim();
+    const content = document.getElementById('ingest-content').value.trim();
+    const btn = document.getElementById('ingest-btn');
+    const result = document.getElementById('ingest-result');
+
+    if (!content) { result.className = 'ingest-result error'; result.textContent = 'Content is required'; return; }
+
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Processing…';
+    result.className = 'ingest-result';
+    result.style.display = 'none';
+
+    try {
+        const res = await fetch('/ingest', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: title || 'Untitled', content }),
+        });
+        const data = await res.json();
+
+        if (data.error) {
+            result.className = 'ingest-result error';
+            result.textContent = data.error;
+        } else {
+            result.className = 'ingest-result success';
+            result.textContent = `✓ Ingested! ${data.entities} entities, ${data.relationships} relationships, ${data.chunks} chunks extracted.`;
+            document.getElementById('ingest-title').value = '';
+            document.getElementById('ingest-content').value = '';
+            // Refresh graph and stats
+            loadGraph();
+            loadStats();
+        }
+    } catch (e) {
+        result.className = 'ingest-result error';
+        result.textContent = 'Error: ' + e.message;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '📥 Ingest Document';
+    }
+}
+
+// ── Documents ──────────────────────────────────────
+async function loadDocs() {
+    const container = document.getElementById('docs-list');
+    try {
+        const res = await fetch('/documents');
+        const docs = await res.json();
+        if (docs.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">📄</div><p>No documents yet.</p></div>';
+            return;
+        }
+        container.innerHTML = docs.map(d => `
+            <div class="doc-card">
+                <div class="doc-title">${d.title}</div>
+                <div class="doc-meta">
+                    <span>📝 ${(d.content_length / 1000).toFixed(1)}k chars</span>
+                    <span>🔵 ${d.entity_count} entities</span>
+                    <span>📦 ${d.chunk_count} chunks</span>
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = `<div style="color:var(--error)">Error loading documents</div>`;
+    }
+}
+
+// ── Entities ───────────────────────────────────────
+async function loadEntities() {
+    const container = document.getElementById('entities-list');
+    try {
+        const res = await fetch('/entities');
+        const entities = await res.json();
+        if (entities.length === 0) {
+            container.innerHTML = '<div class="empty-state"><div class="icon">🔵</div><p>No entities yet.</p></div>';
+            return;
+        }
+        container.innerHTML = entities.map(e => `
+            <div class="entity-item">
+                <span class="entity-type-badge type-${e.entity_type}">${e.entity_type}</span>
+                <div style="flex:1">
+                    <div class="entity-name">${e.name}</div>
+                    ${e.description ? `<div class="entity-desc">${e.description}</div>` : ''}
+                </div>
+            </div>
+        `).join('');
+    } catch (e) {
+        container.innerHTML = `<div style="color:var(--error)">Error loading entities</div>`;
+    }
+}
+
+// ── Init ───────────────────────────────────────────
+loadStats();
+loadGraph();
+</script>
+
+</body>
+</html>

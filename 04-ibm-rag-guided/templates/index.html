@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IBM RAG Guided — Production Patterns</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --surface2: #1c2333;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-dim: #8b949e;
+            --accent: #58a6ff;
+            --accent2: #bc8cff;
+            --green: #3fb950;
+            --yellow: #d29922;
+            --red: #f85149;
+            --orange: #db6d28;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .header {
+            background: linear-gradient(135deg, #0f1923, #1a1040);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+        }
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .header h1 .ibm { color: var(--accent); }
+        .header p { color: var(--text-dim); font-size: 0.85rem; margin-top: 0.25rem; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 1.5rem; }
+
+        /* Tabs */
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 1.5rem;
+        }
+        .tab {
+            padding: 0.75rem 1.25rem;
+            cursor: pointer;
+            color: var(--text-dim);
+            border-bottom: 2px solid transparent;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .tab:hover { color: var(--text); }
+        .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* Query Panel */
+        .query-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .query-input-row {
+            display: flex;
+            gap: 0.75rem;
+            align-items: stretch;
+        }
+        .query-input-row input {
+            flex: 1;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 0.75rem 1rem;
+            font-size: 1rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .query-input-row input:focus { border-color: var(--accent); }
+        .btn {
+            padding: 0.75rem 1.25rem;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.2s;
+            white-space: nowrap;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: #4090e0; }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary {
+            background: var(--surface2);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { background: var(--border); }
+
+        /* Mode Toggle */
+        .mode-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+        .toggle-switch {
+            position: relative;
+            width: 48px;
+            height: 26px;
+        }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .toggle-slider {
+            position: absolute;
+            inset: 0;
+            background: var(--border);
+            border-radius: 26px;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        .toggle-slider::before {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            left: 3px;
+            bottom: 3px;
+            background: var(--text);
+            border-radius: 50%;
+            transition: 0.3s;
+        }
+        .toggle-switch input:checked + .toggle-slider { background: var(--accent); }
+        .toggle-switch input:checked + .toggle-slider::before { transform: translateX(22px); }
+        .mode-label { font-size: 0.9rem; color: var(--text-dim); }
+        .mode-label strong { color: var(--text); }
+
+        /* Results */
+        .results-area { margin-top: 1.5rem; }
+        .result-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+        }
+        .result-card h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--accent);
+        }
+        .answer-text {
+            background: var(--bg);
+            border-radius: 8px;
+            padding: 1rem;
+            white-space: pre-wrap;
+            font-size: 0.9rem;
+            line-height: 1.7;
+            border-left: 3px solid var(--accent);
+        }
+
+        /* Metrics */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+        .metric-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+        }
+        .metric-card .label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metric-card .value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-top: 0.25rem;
+        }
+        .score-good { color: var(--green); }
+        .score-mid { color: var(--yellow); }
+        .score-bad { color: var(--red); }
+
+        /* Pipeline Steps */
+        .pipeline-visual {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0;
+            align-items: stretch;
+            margin-bottom: 1rem;
+        }
+        .pipeline-step {
+            flex: 1;
+            min-width: 160px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            padding: 0.75rem;
+            position: relative;
+            font-size: 0.8rem;
+        }
+        .pipeline-step:first-child { border-radius: 8px 0 0 8px; }
+        .pipeline-step:last-child { border-radius: 0 8px 8px 0; }
+        .pipeline-step .step-name {
+            font-weight: 700;
+            color: var(--accent2);
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            margin-bottom: 0.25rem;
+        }
+        .pipeline-step .step-time {
+            color: var(--text-dim);
+            font-size: 0.7rem;
+        }
+        .pipeline-step .step-detail {
+            color: var(--text-dim);
+            font-size: 0.75rem;
+            margin-top: 0.25rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-height: 3rem;
+        }
+        .pipeline-arrow {
+            display: flex;
+            align-items: center;
+            color: var(--text-dim);
+            font-size: 1.2rem;
+            padding: 0 0.25rem;
+        }
+
+        /* Sources */
+        .sources-list { margin-top: 0.5rem; }
+        .source-item {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .source-item .source-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.25rem;
+        }
+        .source-item .source-title { font-weight: 600; color: var(--accent); }
+        .source-item .source-scores {
+            display: flex;
+            gap: 0.75rem;
+            font-size: 0.75rem;
+        }
+        .source-item .source-content {
+            color: var(--text-dim);
+            font-size: 0.8rem;
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+        .badge-green { background: rgba(63,185,80,0.15); color: var(--green); }
+        .badge-yellow { background: rgba(210,153,34,0.15); color: var(--yellow); }
+        .badge-red { background: rgba(248,81,73,0.15); color: var(--red); }
+        .badge-blue { background: rgba(88,166,255,0.15); color: var(--accent); }
+
+        /* Logs Table */
+        .logs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        .logs-table th, .logs-table td {
+            padding: 0.6rem 0.75rem;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .logs-table th {
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+        .logs-table tr:hover { background: var(--surface2); }
+
+        /* Comparison */
+        .compare-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+        }
+        .compare-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+        .compare-card h4 { margin-bottom: 1rem; }
+        .compare-card.advanced { border-left: 3px solid var(--accent2); }
+        .compare-card.simple { border-left: 3px solid var(--text-dim); }
+        .bar-chart { margin-top: 0.5rem; }
+        .bar-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .bar-label { width: 100px; font-size: 0.8rem; color: var(--text-dim); }
+        .bar-track {
+            flex: 1;
+            height: 24px;
+            background: var(--bg);
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+        }
+        .bar-fill.adv { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+        .bar-fill.simple { background: var(--text-dim); }
+
+        /* Documents */
+        .doc-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        .doc-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+        }
+        .doc-card h4 { font-size: 0.95rem; margin-bottom: 0.5rem; }
+        .doc-card .doc-meta {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            display: flex;
+            gap: 1rem;
+        }
+
+        /* Ingest Form */
+        .ingest-form {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .form-row {
+            display: flex;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+        .form-row input, .form-row select {
+            flex: 1;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 0.6rem 0.8rem;
+            font-size: 0.9rem;
+            outline: none;
+        }
+        .form-row textarea {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 0.6rem 0.8rem;
+            font-size: 0.9rem;
+            outline: none;
+            resize: vertical;
+            min-height: 120px;
+            font-family: inherit;
+        }
+        .form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+            border-color: var(--accent);
+        }
+
+        /* Loading */
+        .loading {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 2rem;
+            justify-content: center;
+            color: var(--text-dim);
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-dim);
+        }
+        .empty-state .icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .compare-grid { grid-template-columns: 1fr; }
+            .pipeline-visual { flex-direction: column; }
+            .pipeline-step { border-radius: 8px !important; }
+            .pipeline-arrow { justify-content: center; transform: rotate(90deg); }
+            .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏢 <span class="ibm">IBM</span> RAG Guided — Production Patterns</h1>
+        <p>Query Expansion • Re-ranking • Answer Grounding • Evaluation Metrics</p>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <div class="tab active" data-tab="query">🔍 Query</div>
+            <div class="tab" data-tab="compare">📊 Compare</div>
+            <div class="tab" data-tab="logs">📋 Logs</div>
+            <div class="tab" data-tab="documents">📄 Documents</div>
+        </div>
+
+        <!-- ── Query Tab ── -->
+        <div id="tab-query" class="tab-content active">
+            <div class="query-panel">
+                <div class="query-input-row">
+                    <input type="text" id="queryInput" placeholder="Ask a technical question..."
+                           onkeydown="if(event.key==='Enter')runQuery()">
+                    <button class="btn btn-primary" id="queryBtn" onclick="runQuery()">🚀 Query</button>
+                </div>
+                <div class="mode-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="modeToggle" checked>
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="mode-label" id="modeLabel">
+                        <strong>Advanced (IBM)</strong> — expansion + re-ranking + grounding
+                    </span>
+                </div>
+            </div>
+
+            <div id="resultsArea" class="results-area"></div>
+        </div>
+
+        <!-- ── Compare Tab ── -->
+        <div id="tab-compare" class="tab-content">
+            <div id="compareArea">
+                <div class="empty-state">
+                    <div class="icon">📊</div>
+                    <p>Run queries in both modes to see comparisons</p>
+                    <button class="btn btn-secondary" onclick="loadCompare()" style="margin-top:1rem">Load Comparisons</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Logs Tab ── -->
+        <div id="tab-logs" class="tab-content">
+            <div style="margin-bottom:1rem">
+                <button class="btn btn-secondary" onclick="loadLogs()">🔄 Refresh</button>
+            </div>
+            <div id="logsArea">
+                <div class="empty-state">
+                    <div class="icon">📋</div>
+                    <p>No queries yet</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── Documents Tab ── -->
+        <div id="tab-documents" class="tab-content">
+            <div class="ingest-form">
+                <h3 style="margin-bottom:1rem;font-size:1rem;">➕ Ingest New Document</h3>
+                <div class="form-row">
+                    <input type="text" id="docTitle" placeholder="Document title">
+                    <select id="docCategory">
+                        <option value="general">General</option>
+                        <option value="machine learning">Machine Learning</option>
+                        <option value="data engineering">Data Engineering</option>
+                        <option value="cloud architecture">Cloud Architecture</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <textarea id="docContent" placeholder="Document content..."></textarea>
+                </div>
+                <button class="btn btn-primary" onclick="ingestDoc()">📥 Ingest</button>
+            </div>
+            <div id="docsArea">
+                <div class="empty-state"><div class="icon">📄</div><p>Loading documents...</p></div>
+            </div>
+        </div>
+    </div>
+
+<script>
+// ── Tab Navigation ──
+document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-' + tab.dataset.tab).classList.add('active');
+        if (tab.dataset.tab === 'logs') loadLogs();
+        if (tab.dataset.tab === 'documents') loadDocs();
+        if (tab.dataset.tab === 'compare') loadCompare();
+    });
+});
+
+// ── Mode Toggle ──
+document.getElementById('modeToggle').addEventListener('change', function() {
+    const label = document.getElementById('modeLabel');
+    if (this.checked) {
+        label.innerHTML = '<strong>Advanced (IBM)</strong> — expansion + re-ranking + grounding';
+    } else {
+        label.innerHTML = '<strong>Simple</strong> — direct retrieval only';
+    }
+});
+
+// ── Score Color ──
+function scoreClass(score) {
+    if (score === null || score === undefined) return 'score-mid';
+    if (score >= 0.7) return 'score-good';
+    if (score >= 0.4) return 'score-mid';
+    return 'score-bad';
+}
+function scoreBadge(score) {
+    if (score === null || score === undefined) return '<span class="badge badge-yellow">N/A</span>';
+    const cls = score >= 0.7 ? 'badge-green' : score >= 0.4 ? 'badge-yellow' : 'badge-red';
+    return `<span class="badge ${cls}">${score.toFixed(2)}</span>`;
+}
+
+// ── Run Query ──
+async function runQuery() {
+    const query = document.getElementById('queryInput').value.trim();
+    if (!query) return;
+
+    const advanced = document.getElementById('modeToggle').checked;
+    const endpoint = advanced ? '/query' : '/query/simple';
+    const btn = document.getElementById('queryBtn');
+    const area = document.getElementById('resultsArea');
+
+    btn.disabled = true;
+    btn.textContent = '⏳ Processing...';
+    area.innerHTML = `<div class="loading"><div class="spinner"></div>
+        <span>${advanced ? 'Running advanced pipeline (expansion → retrieval → reranking → generation → grounding)...' : 'Running simple retrieval...'}</span></div>`;
+
+    try {
+        const res = await fetch(endpoint, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({query}),
+        });
+        const data = await res.json();
+        renderResults(data, advanced);
+    } catch (e) {
+        area.innerHTML = `<div class="result-card" style="border-color:var(--red)">
+            <h3 style="color:var(--red)">❌ Error</h3><p>${e.message}</p></div>`;
+    }
+
+    btn.disabled = false;
+    btn.textContent = '🚀 Query';
+}
+
+function renderResults(data, advanced) {
+    const area = document.getElementById('resultsArea');
+    let html = '';
+
+    // Metrics
+    const m = data.metrics;
+    html += `<div class="result-card"><h3>📊 Metrics</h3><div class="metrics-grid">
+        <div class="metric-card"><div class="label">Relevance</div>
+            <div class="value ${scoreClass(m.relevance_score)}">${m.relevance_score !== null ? m.relevance_score.toFixed(2) : 'N/A'}</div></div>
+        <div class="metric-card"><div class="label">Faithfulness</div>
+            <div class="value ${scoreClass(m.faithfulness_score)}">${m.faithfulness_score !== null ? m.faithfulness_score.toFixed(2) : 'N/A'}</div></div>
+        <div class="metric-card"><div class="label">Chunks Used</div>
+            <div class="value" style="color:var(--accent)">${m.chunks_used}</div></div>
+        <div class="metric-card"><div class="label">Latency</div>
+            <div class="value" style="color:${m.latency_ms > 10000 ? 'var(--red)' : m.latency_ms > 5000 ? 'var(--yellow)' : 'var(--green)'}">${(m.latency_ms/1000).toFixed(1)}s</div></div>
+    </div>`;
+
+    if (m.assessment) {
+        html += `<div style="font-size:0.85rem;color:var(--text-dim);margin-top:0.5rem">
+            <strong>Assessment:</strong> ${m.assessment}</div>`;
+    }
+    html += `</div>`;
+
+    // Pipeline (advanced only)
+    if (advanced && data.pipeline) {
+        html += `<div class="result-card"><h3>🔄 Pipeline Steps</h3><div class="pipeline-visual">`;
+        data.pipeline.forEach((step, i) => {
+            if (i > 0) html += `<div class="pipeline-arrow">→</div>`;
+            let detail = '';
+            if (step.step === 'Query Expansion' && Array.isArray(step.detail)) {
+                detail = step.detail.map(q => `• ${q}`).join('<br>');
+            } else if (typeof step.detail === 'string') {
+                detail = step.detail;
+            } else if (step.step === 'Grounding Check' && step.detail) {
+                detail = `Faith: ${step.detail.faithfulness_score?.toFixed(2) || 'N/A'}`;
+            } else if (Array.isArray(step.detail)) {
+                detail = step.detail.length + ' items';
+            }
+            html += `<div class="pipeline-step">
+                <div class="step-name">${step.step}</div>
+                <div class="step-time">${step.duration_ms}ms</div>
+                <div class="step-detail">${detail}</div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    // Expanded queries
+    if (advanced && data.expanded_queries && data.expanded_queries.length > 1) {
+        html += `<div class="result-card"><h3>🔀 Query Variations</h3>
+            <ul style="padding-left:1.5rem;font-size:0.9rem">`;
+        data.expanded_queries.forEach((q, i) => {
+            html += `<li style="margin-bottom:0.25rem;${i===0?'font-weight:700;color:var(--accent)':''}">${q}${i===0?' (original)':''}</li>`;
+        });
+        html += `</ul></div>`;
+    }
+
+    // Answer
+    html += `<div class="result-card"><h3>💬 Answer <span class="badge badge-blue">${data.mode}</span></h3>
+        <div class="answer-text">${data.answer}</div></div>`;
+
+    // Sources
+    if (data.sources && data.sources.length > 0) {
+        html += `<div class="result-card"><h3>📚 Sources (${data.sources.length})</h3><div class="sources-list">`;
+        data.sources.forEach(s => {
+            html += `<div class="source-item">
+                <div class="source-header">
+                    <span class="source-title">${s.title}</span>
+                    <span class="source-scores">
+                        Sim: ${scoreBadge(s.similarity)}
+                        ${s.rerank_score !== undefined ? `Rerank: <span class="badge ${s.rerank_score >= 7 ? 'badge-green' : s.rerank_score >= 4 ? 'badge-yellow' : 'badge-red'}">${s.rerank_score}/10</span>` : ''}
+                    </span>
+                </div>
+                <div class="source-content">${s.content}...</div>
+            </div>`;
+        });
+        html += `</div></div>`;
+    }
+
+    area.innerHTML = html;
+}
+
+// ── Logs ──
+async function loadLogs() {
+    const area = document.getElementById('logsArea');
+    area.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading logs...</span></div>';
+    try {
+        const res = await fetch('/logs');
+        const logs = await res.json();
+        if (logs.length === 0) {
+            area.innerHTML = '<div class="empty-state"><div class="icon">📋</div><p>No queries yet</p></div>';
+            return;
+        }
+        let html = `<div style="overflow-x:auto"><table class="logs-table">
+            <thead><tr>
+                <th>Query</th><th>Mode</th><th>Relevance</th><th>Faithfulness</th>
+                <th>Chunks</th><th>Latency</th><th>Time</th>
+            </tr></thead><tbody>`;
+        logs.forEach(l => {
+            const mode = l.mode || 'advanced';
+            html += `<tr>
+                <td style="max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.query}</td>
+                <td><span class="badge ${mode === 'advanced' ? 'badge-blue' : 'badge-yellow'}">${mode}</span></td>
+                <td>${l.relevance_score !== null ? scoreBadge(l.relevance_score) : '-'}</td>
+                <td>${l.faithfulness_score !== null ? scoreBadge(l.faithfulness_score) : '-'}</td>
+                <td>${l.chunks_used || '-'}</td>
+                <td>${l.latency_ms ? (l.latency_ms/1000).toFixed(1) + 's' : '-'}</td>
+                <td style="font-size:0.75rem;color:var(--text-dim)">${l.created_at ? new Date(l.created_at).toLocaleString() : '-'}</td>
+            </tr>`;
+        });
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    } catch (e) {
+        area.innerHTML = `<p style="color:var(--red)">Error: ${e.message}</p>`;
+    }
+}
+
+// ── Compare ──
+async function loadCompare() {
+    const area = document.getElementById('compareArea');
+    area.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading comparisons...</span></div>';
+    try {
+        const res = await fetch('/logs/compare');
+        const data = await res.json();
+
+        if (!data.summary || data.summary.length === 0) {
+            area.innerHTML = '<div class="empty-state"><div class="icon">📊</div><p>No data yet. Run queries in both modes to compare.</p></div>';
+            return;
+        }
+
+        const adv = data.summary.find(s => s.mode === 'advanced') || {};
+        const sim = data.summary.find(s => s.mode === 'simple') || {};
+
+        let html = `<div class="compare-grid">
+            <div class="compare-card advanced">
+                <h4 style="color:var(--accent2)">🏢 Advanced (IBM) Pipeline</h4>
+                <div class="metrics-grid" style="grid-template-columns:repeat(2,1fr)">
+                    <div class="metric-card"><div class="label">Queries</div><div class="value" style="color:var(--accent)">${adv.total_queries || 0}</div></div>
+                    <div class="metric-card"><div class="label">Avg Relevance</div><div class="value ${scoreClass(adv.avg_relevance)}">${adv.avg_relevance || 'N/A'}</div></div>
+                    <div class="metric-card"><div class="label">Avg Faithfulness</div><div class="value ${scoreClass(adv.avg_faithfulness)}">${adv.avg_faithfulness || 'N/A'}</div></div>
+                    <div class="metric-card"><div class="label">Avg Latency</div><div class="value" style="color:var(--text-dim)">${adv.avg_latency_ms ? (adv.avg_latency_ms/1000).toFixed(1)+'s' : 'N/A'}</div></div>
+                </div>
+            </div>
+            <div class="compare-card simple">
+                <h4 style="color:var(--text-dim)">⚡ Simple Pipeline</h4>
+                <div class="metrics-grid" style="grid-template-columns:repeat(2,1fr)">
+                    <div class="metric-card"><div class="label">Queries</div><div class="value" style="color:var(--accent)">${sim.total_queries || 0}</div></div>
+                    <div class="metric-card"><div class="label">Avg Relevance</div><div class="value ${scoreClass(sim.avg_relevance)}">${sim.avg_relevance || 'N/A'}</div></div>
+                    <div class="metric-card"><div class="label">Avg Faithfulness</div><div class="value ${scoreClass(sim.avg_faithfulness)}">${sim.avg_faithfulness || 'N/A'}</div></div>
+                    <div class="metric-card"><div class="label">Avg Latency</div><div class="value" style="color:var(--text-dim)">${sim.avg_latency_ms ? (sim.avg_latency_ms/1000).toFixed(1)+'s' : 'N/A'}</div></div>
+                </div>
+            </div>
+        </div>`;
+
+        // Bar chart comparison
+        if (adv.avg_relevance || sim.avg_relevance) {
+            html += `<div class="result-card" style="margin-top:1rem"><h3>📈 Side-by-Side Comparison</h3><div class="bar-chart">`;
+
+            const metrics = [
+                {label: 'Relevance', adv: adv.avg_relevance || 0, sim: sim.avg_relevance || 0},
+                {label: 'Faithfulness', adv: adv.avg_faithfulness || 0, sim: sim.avg_faithfulness || 0},
+            ];
+            metrics.forEach(m => {
+                html += `<div class="bar-row">
+                    <span class="bar-label">${m.label}</span>
+                    <div class="bar-track">
+                        <div class="bar-fill adv" style="width:${m.adv*100}%">${m.adv ? m.adv.toFixed(2) : ''}</div>
+                    </div>
+                    <div class="bar-track">
+                        <div class="bar-fill simple" style="width:${m.sim*100}%">${m.sim ? m.sim.toFixed(2) : ''}</div>
+                    </div>
+                </div>`;
+            });
+            html += `<div style="display:flex;gap:1.5rem;margin-top:0.5rem;font-size:0.8rem">
+                <span><span style="display:inline-block;width:12px;height:12px;background:var(--accent2);border-radius:2px"></span> Advanced</span>
+                <span><span style="display:inline-block;width:12px;height:12px;background:var(--text-dim);border-radius:2px"></span> Simple</span>
+            </div></div></div>`;
+        }
+
+        // Paired comparisons
+        if (data.paired_comparisons && data.paired_comparisons.length > 0) {
+            html += `<div class="result-card" style="margin-top:1rem"><h3>🔗 Paired Queries</h3>
+                <div style="overflow-x:auto"><table class="logs-table"><thead><tr>
+                    <th>Query</th><th>Adv Relevance</th><th>Adv Faithfulness</th><th>Adv Latency</th>
+                    <th>Simple Relevance</th><th>Simple Latency</th>
+                </tr></thead><tbody>`;
+            data.paired_comparisons.forEach(p => {
+                html += `<tr>
+                    <td style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.query}</td>
+                    <td>${scoreBadge(p.adv_relevance)}</td>
+                    <td>${scoreBadge(p.adv_faithfulness)}</td>
+                    <td>${p.adv_latency ? (p.adv_latency/1000).toFixed(1)+'s' : '-'}</td>
+                    <td>${scoreBadge(p.simple_relevance)}</td>
+                    <td>${p.simple_latency ? (p.simple_latency/1000).toFixed(1)+'s' : '-'}</td>
+                </tr>`;
+            });
+            html += '</tbody></table></div></div>';
+        }
+
+        area.innerHTML = html;
+    } catch (e) {
+        area.innerHTML = `<p style="color:var(--red)">Error: ${e.message}</p>`;
+    }
+}
+
+// ── Documents ──
+async function loadDocs() {
+    const area = document.getElementById('docsArea');
+    area.innerHTML = '<div class="loading"><div class="spinner"></div><span>Loading...</span></div>';
+    try {
+        const res = await fetch('/documents');
+        const docs = await res.json();
+        if (docs.length === 0) {
+            area.innerHTML = '<div class="empty-state"><div class="icon">📄</div><p>No documents. Run seed.py or ingest above.</p></div>';
+            return;
+        }
+        let html = '<div class="doc-grid">';
+        docs.forEach(d => {
+            html += `<div class="doc-card">
+                <h4>${d.title}</h4>
+                <div class="doc-meta">
+                    <span class="badge badge-blue">${d.category || 'general'}</span>
+                    <span>${d.chunk_count} chunks</span>
+                </div>
+            </div>`;
+        });
+        html += '</div>';
+        area.innerHTML = html;
+    } catch (e) {
+        area.innerHTML = `<p style="color:var(--red)">Error: ${e.message}</p>`;
+    }
+}
+
+// ── Ingest ──
+async function ingestDoc() {
+    const title = document.getElementById('docTitle').value.trim();
+    const content = document.getElementById('docContent').value.trim();
+    const category = document.getElementById('docCategory').value;
+    if (!title || !content) { alert('Title and content required'); return; }
+
+    try {
+        const res = await fetch('/ingest', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({title, content, category}),
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            alert(`✅ Ingested: ${data.chunks_created} chunks created`);
+            document.getElementById('docTitle').value = '';
+            document.getElementById('docContent').value = '';
+            loadDocs();
+        } else {
+            alert('Error: ' + (data.error || 'Unknown'));
+        }
+    } catch (e) {
+        alert('Error: ' + e.message);
+    }
+}
+
+// Initial load
+loadDocs();
+</script>
+</body>
+</html>
